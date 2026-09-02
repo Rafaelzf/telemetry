@@ -1,13 +1,19 @@
 import knexFactory from 'knex';
+import { fileURLToPath } from 'node:url';
 import { env } from '../config/env.js';
 
 const command = process.argv[2] ?? 'latest';
 
+const isLocalDatabase = /(localhost|127\.0\.0\.1)/.test(env.DATABASE_URL);
+
 const knex = knexFactory({
   client: 'pg',
-  connection: env.DATABASE_URL,
+  connection: {
+    connectionString: env.DATABASE_URL,
+    ssl: isLocalDatabase ? false : { rejectUnauthorized: false }
+  },
   migrations: {
-    directory: './migrations',
+    directory: fileURLToPath(new URL('./migrations', import.meta.url)),
     extension: 'ts',
     loadExtensions: ['.ts']
   }
