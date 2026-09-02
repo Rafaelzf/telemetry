@@ -14,6 +14,17 @@ vi.mock('../src/database/connection.js', () => ({
   closeDatabaseConnection: vi.fn(async () => {})
 }));
 
+vi.mock('../src/config/redis.js', () => ({
+  redis: {},
+  closeRedisConnection: vi.fn(async () => {})
+}));
+
+vi.mock('../src/lib/rate-limit.js', () => ({
+  ingestRateLimit: {
+    limit: vi.fn(async () => ({ success: true, limit: 100, remaining: 99, reset: Date.now() + 60_000 }))
+  }
+}));
+
 const { buildServer } = await import('../src/app.js');
 const { queueProducer } = await import('../src/queues/telemetry.queue.js');
 

@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { ingestRateLimit } from '../lib/rate-limit.js';
 import { queueProducer } from '../queues/telemetry.queue.js';
 import { TelemetryEventSchema } from '../schemas/telemetry.schema.js';
 
@@ -10,6 +11,12 @@ const RawBatchSchema = z.array(z.unknown()).min(1, 'batch must contain at least 
 );
 
 export async function ingestTelemetryHandler(req: FastifyRequest, reply: FastifyReply) {
+  const { success, limit, remaining, reset } = await ingestRateLimit.limit(req.ip);
+  reply.header('X-RateLimit-Limit', limit).header('X-RateLimit-Remaining', remaining).header('X-RateLimit-Reset', reset);
+  if (!success) {
+    return reply.status(429).send({ error: 'Too many requests, slow down' });
+  }
+
   let rawBody: unknown = req.body;
 
   // navigator.sendBeacon frequently delivers the payload as text/plain.

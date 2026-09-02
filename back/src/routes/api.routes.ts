@@ -16,7 +16,7 @@ export async function apiRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(status).send({
       status: dbHealthy ? 'ok' : 'degraded',
       database: dbHealthy ? 'up' : 'down',
-      queue: queueProducer.getStats()
+      queue: await queueProducer.getStats()
     });
   });
 }

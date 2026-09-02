@@ -14,6 +14,11 @@ vi.mock('../src/queues/telemetry.queue.js', () => ({
   }
 }));
 
+vi.mock('../src/config/redis.js', () => ({
+  redis: {},
+  closeRedisConnection: vi.fn(async () => {})
+}));
+
 const { buildServer } = await import('../src/app.js');
 
 describe('GET /api/v1/metrics/errors', () => {
