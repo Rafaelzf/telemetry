@@ -10,7 +10,7 @@ FROM node:20-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY src/database/migrations ./src/database/migrations
 COPY src/database/migrate.ts ./src/database/migrate.ts
