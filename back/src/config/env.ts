@@ -13,11 +13,11 @@ const EnvSchema = z.object({
   BATCH_MAX_EVENTS: z.coerce.number().int().positive().default(500),
   // Each concurrent poll loop hits Redis roughly (1000 / QUEUE_POLL_INTERVAL_MS) times/sec even when
   // the queue is empty. Upstash's free Redis plan caps at 10,000 requests/day, so these defaults are
-  // tuned to stay well under that at idle (1 loop x every 15s ~= 5,760 req/day) rather than for low
+  // tuned to stay well under that at idle (1 loop x every 60s ~= 1,440 req/day) rather than for low
   // latency. Raise QUEUE_CONCURRENCY / lower QUEUE_POLL_INTERVAL_MS only on a paid Redis plan.
   QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(1),
   QUEUE_MAX_SIZE: z.coerce.number().int().positive().default(10_000),
-  QUEUE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
+  QUEUE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   INGEST_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   INGEST_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   METRICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30)

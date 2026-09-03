@@ -13,7 +13,7 @@ const REDIS_OP_TIMEOUT_MS = 3_000;
  * probe hits /health (and therefore getStats) roughly every 5s; without this, that alone adds
  * ~17k LLEN calls/day against Upstash's 10k/day free-tier cap, on top of the poll loop's own usage.
  */
-const STATS_CACHE_TTL_MS = 10_000;
+const STATS_CACHE_TTL_MS = 60_000;
 
 function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), REDIS_OP_TIMEOUT_MS))]);
