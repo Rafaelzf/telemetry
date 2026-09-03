@@ -5,7 +5,6 @@ services:
     rootDir: back
     plan: free
     healthCheckPath: /api/v1/health
-    preDeployCommand: npx tsx src/database/migrate.ts latest
     envVars:
       - key: NODE_ENV
         value: production

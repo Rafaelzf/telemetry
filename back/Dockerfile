@@ -18,4 +18,4 @@ COPY src/config/env.ts ./src/config/env.ts
 COPY tsconfig.json ./
 
 EXPOSE 3000
-CMD ["node", "dist/app.js"]
+CMD ["sh", "-c", "npx tsx src/database/migrate.ts latest && node dist/app.js"]
