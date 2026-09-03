@@ -4,12 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository layout
 
-This repo is two halves of one system, at different implementation stages:
+This repo is two halves of one system:
 
-- **`back/`** — the ingestion backend. Fully implemented, tested, and the only place with actual code to work in day-to-day.
-- **`sdk/`** — the front-end telemetry SDK. Currently only a spec (`sdk/sdd.md`); no source exists yet. If asked to implement it, follow that spec's module layout (`src/core`, `src/trackers`, `src/transport`, `src/react`) and its `TelemetryEvent` payload shapes, which must stay wire-compatible with `back/src/schemas/telemetry.schema.ts`.
+- **`back/`** — the ingestion backend. Fully implemented and tested.
+- **`sdk/`** — the front-end telemetry SDK. Implemented per its spec (`sdk/sdd.md`), module layout `src/core`, `src/trackers`, `src/transport`, `src/react`. Built with `tsup` (dual ESM/CJS + `.d.ts`, two entry points: `.` and `./react`), tested with Vitest + Testing Library, not yet published anywhere.
 
-All day-to-day commands below assume `cd back`.
+`sdk/src/core/types.ts`'s `TelemetryEvent` union is the wire contract with `back/src/schemas/telemetry.schema.ts` and intentionally diverges from `sdd.md` §4 where the two conflict — the SDD conflates `behavior`/`custom` into one shape with `action`/`metadata`, but the backend's Zod schema requires them separate (`behavior`: `action`+`payload`; `custom`: `name`+`payload`), so the SDK implements the backend's shape, not the SDD's literal TS interface. Fields the SDD lists but the backend schema doesn't accept (`errorDetails.statusCode`, `metrics.resourceName`, behavior `category`) were dropped rather than sent-and-ignored. Keep both schemas in sync when changing either side.
+
+All day-to-day backend commands below assume `cd back`. SDK commands (`cd sdk`): `npm run build` (tsup), `npm test` / `npm run test:watch` (Vitest + jsdom), `npm run typecheck`.
 
 ## Commands (run from `back/`)
 
