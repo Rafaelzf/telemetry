@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: telemetry-back
+    runtime: docker
+    rootDir: back
+    plan: free
+    healthCheckPath: /api/v1/health
+    preDeployCommand: npx tsx src/database/migrate.ts latest
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
