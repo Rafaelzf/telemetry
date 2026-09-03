@@ -2,7 +2,6 @@ import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { pathToFileURL } from 'node:url';
 import { corsOrigins, env } from './config/env.js';
-import { closeRedisConnection } from './config/redis.js';
 import { closeDatabaseConnection } from './database/connection.js';
 import { queueProducer } from './queues/telemetry.queue.js';
 import { apiRoutes } from './routes/api.routes.js';
@@ -46,7 +45,6 @@ async function main() {
     await fastify.close();
     await queueProducer.waitForDrain(10_000);
     await closeDatabaseConnection();
-    await closeRedisConnection();
     process.exit(0);
   };
 

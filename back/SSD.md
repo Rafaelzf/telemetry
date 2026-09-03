@@ -42,8 +42,8 @@ O Backend de Monitoramento é o serviço responsável por:
 - [x] **RF-01** — `POST /api/v1/telemetry` exposto (`src/routes/api.routes.ts`, `src/controllers/ingest.controller.ts`)
 - [x] **RF-02** — `application/json` e `text/plain` (`sendBeacon`) aceitos (`src/app.ts` registra parser de `text/plain`; controller faz `JSON.parse` quando o body vem como string)
 - [x] **RF-03** — Validação com Zod, descartando itens corrompidos individualmente e retornando `rejected` na resposta (`RawBatchSchema` + `TelemetryEventSchema.safeParse` por item)
-- [x] **RF-04** — Lotes validados vão para fila assíncrona real (BullMQ + Redis/Upstash, não mais em memória) (`src/queues/telemetry.queue.ts`)
-- [x] **RF-05** — Worker consome a fila e grava no banco (`src/workers/telemetry.worker.ts`, processado pelo `Worker` do BullMQ)
+- [x] **RF-04** — Lotes validados vão para fila assíncrona real (fila baseada em lista Redis, via API REST da Upstash, não mais em memória) (`src/queues/telemetry.queue.ts`)
+- [x] **RF-05** — Worker consome a fila e grava no banco (`src/workers/telemetry.worker.ts`, chamado pelos loops de polling em `telemetry.queue.ts`)
 - [x] **RF-06** — Rotas `GET /metrics/errors` e `GET /metrics/performance` expostas, com cache-aside (TTL configurável) (`src/controllers/metrics.controller.ts`, `src/lib/cache.ts`)
 - [x] **RF-07** — Rate limit por IP (sliding window) no `/telemetry`, com headers `X-RateLimit-*` e `429` ao exceder (`src/lib/rate-limit.ts`)
 
@@ -72,7 +72,7 @@ Adota-se uma arquitetura Desacoplada baseada em Eventos/Filas (Producer-Consumer
 │                                  │ (Responde HTTP 202 Accepted em <20ms)
 │                                  ▼                                     │
 │   ┌─────────────────────────────────────────────────────────────┐      │
-│   │ In-Memory Queue / Redis (BullMQ Producer)                   │      │
+│   │ Redis List Queue (RPUSH via Upstash REST API)                │      │
 │   └──────────────────────────────┬──────────────────────────────┘      │
 └──────────────────────────────────┼─────────────────────────────────────┘
                                    │ (Async Processing)
@@ -81,7 +81,7 @@ Adota-se uma arquitetura Desacoplada baseada em Eventos/Filas (Producer-Consumer
 │                        NODE.JS WORKER SERVICE                          │
 │                                                                        │
 │   ┌─────────────────────────────────────────────────────────────┐      │
-│   │ BullMQ Consumer / Ingestor Worker                           │      │
+│   │ Polling Consumer (LPOP via REST) / Ingestor Worker           │      │
 │   │ - Agrupa dados e formata stack traces                       │      │
 │   │ - Grava em lote (Bulk Insert) no Banco de Dados             │      │
 │   └──────────────────────────────┬──────────────────────────────┘      │
@@ -250,8 +250,7 @@ export async function processTelemetryQueueBatch(batch: TelemetryBatch) {
 ├── src/
 │   ├── config/             # Variáveis de ambiente e constantes
 │   │   ├── env.ts
-│   │   ├── redis.ts        # Cliente Redis TCP (ioredis), usado pela fila BullMQ
-│   │   └── redis-rest.ts   # Cliente Redis REST (@upstash/redis), usado por cache e rate-limit
+│   │   └── redis-rest.ts   # Cliente Redis REST (@upstash/redis), usado pela fila, cache e rate-limit
 │   ├── controllers/        # Handlers das rotas HTTP
 │   │   ├── ingest.controller.ts
 │   │   └── metrics.controller.ts
@@ -261,11 +260,11 @@ export async function processTelemetryQueueBatch(batch: TelemetryBatch) {
 │   ├── lib/                # Utilitários compartilhados
 │   │   ├── rate-limit.ts   # @upstash/ratelimit (sliding window, por IP)
 │   │   └── cache.ts        # Helper cache-aside (get/set com TTL) via Redis REST
-│   ├── queues/             # Configuração do Producer/Consumer de Filas (BullMQ)
+│   ├── queues/             # Fila Redis (lista, via API REST) - producer/consumer polling
 │   │   └── telemetry.queue.ts
 │   ├── schemas/            # Validações estritas com Zod
 │   │   └── telemetry.schema.ts
-│   ├── workers/            # Lógica de processamento em lote (consumida pelo Worker do BullMQ)
+│   ├── workers/            # Lógica de processamento em lote (chamada pelos loops de polling da fila)
 │   │   └── telemetry.worker.ts
 │   ├── routes/             # Definição de rotas da API Fastify/Express
 │   │   └── api.routes.ts
@@ -280,14 +279,11 @@ export async function processTelemetryQueueBatch(batch: TelemetryBatch) {
 
 Esta seção documenta decisões tomadas durante a implementação real, que estendem ou ajustam o plano original das seções 1-6.
 
-### 7.1 Duas conexões Redis distintas, não uma só
+### 7.1 Uma única conexão Redis, só REST — sem TCP
 
-O Redis é provisionado na Upstash e acessado de **duas formas diferentes**, cada uma para um propósito:
+**Histórico:** a primeira versão da fila usava BullMQ sobre uma conexão TCP persistente (`rediss://`, via `ioredis`), separada da conexão REST usada por cache/rate-limit. Isso foi abandonado (ver §7.6) porque a porta TCP 6379 se mostrou bloqueada de forma consistente em testes reais, mesmo após trocar de rede — o handshake TCP inicial (`connect`) tinha sucesso, mas a negociação subsequente (TLS/protocolo Redis) travava indefinidamente sem nunca emitir `ready`, `error` ou `close`. Esse comportamento bate com bloqueio por DPI (deep packet inspection) em firewall corporativo: a porta 443 (HTTPS, usada pela REST) permanece liberada nesse mesmo ambiente.
 
-- **TCP (`rediss://`, via `ioredis`)** — usado exclusivamente pela fila BullMQ (`src/queues/telemetry.queue.ts`, `src/config/redis.ts`). O BullMQ precisa de uma conexão persistente e stateful (comandos bloqueantes como `BZPOPMIN`, além de pub/sub) para o Worker escutar novos jobs — isso não existe na API REST da Upstash.
-- **REST (HTTPS, via `@upstash/redis`)** — usado para cache e rate limiting (`src/config/redis-rest.ts`), que são operações simples de request/response e não precisam de conexão persistente.
-
-Motivo prático: em redes corporativas com firewall de inspeção profunda de pacote (DPI), a porta TCP 6379 pode ser bloqueada mesmo com o handshake TCP inicial aparentando sucesso (a conexão TLS é resetada). A porta 443 (HTTPS, usada pela REST) tende a ficar liberada nesses ambientes. Por isso a fila (BullMQ) só é totalmente validável num ambiente sem esse tipo de bloqueio (ex: produção), enquanto cache/rate-limit via REST funcionam em qualquer rede que permita HTTPS de saída.
+Hoje **todo** acesso ao Redis (fila de ingestão, cache e rate limiting) passa exclusivamente pela **API REST da Upstash** (HTTPS/443, via `@upstash/redis`, `src/config/redis-rest.ts`). Não há mais cliente TCP/`ioredis` no projeto. A troca elimina a dependência de uma porta que pode estar bloqueada em redes de desenvolvimento ou de produção, ao custo de a fila não ter mais pop bloqueante nem pub/sub nativos — os consumidores fazem *polling* na lista (ver §7.6).
 
 ### 7.2 Rate limiting no endpoint de ingestão (RF-07)
 
@@ -297,19 +293,30 @@ Motivo prático: em redes corporativas com firewall de inspeção profunda de pa
 
 `GET /api/v1/metrics/errors` e `GET /api/v1/metrics/performance` usam um helper cache-aside (`withCache`, `src/lib/cache.ts`): a chave é derivada dos parâmetros da query, o TTL é configurável via `METRICS_CACHE_TTL_SECONDS` (padrão 30s), e o resultado da consulta ao Postgres só é recalculado quando o cache expira.
 
-### 7.4 Resiliência a falhas do Redis TCP (fila)
+### 7.4 Resiliência a falhas do Redis (fila)
 
-Descoberta durante testes: sem proteção, uma chamada Redis via TCP que nunca recebe resposta (conexão inatingível) deixava a requisição HTTP presa indefinidamente — o `ioredis` enfileira o comando esperando a conexão em vez de falhar rápido. Isso afeta tanto o cenário de rede bloqueada quanto uma eventual instabilidade real da Upstash em produção.
+Descoberta durante testes com o cliente TCP original: sem proteção, uma chamada Redis que nunca recebe resposta (conexão inatingível) deixava a requisição HTTP presa indefinidamente. O mesmo cuidado se aplica ao cliente REST atual, já que uma chamada HTTPS também pode travar sob instabilidade de rede ou da Upstash.
 
-Mitigação aplicada em `telemetry.queue.ts`: toda operação da fila (`addBatch`, `getStats`) tem um timeout de 3s (`REDIS_OP_TIMEOUT_MS`); ao estourar, a requisição responde rápido em vez de travar — `addBatch` retorna `{ queued: false }` (HTTP 503) e `getStats` retorna `redisReachable: false` no `/health`.
+Mitigação aplicada em `telemetry.queue.ts`: toda operação da fila (`addBatch`, `getStats`, e cada iteração de polling) tem um timeout de 3s (`REDIS_OP_TIMEOUT_MS`); ao estourar, a operação responde rápido em vez de travar — `addBatch` retorna `{ queued: false }` (HTTP 503), `getStats` retorna `redisReachable: false` no `/health`, e um poll sem resposta simplesmente tenta de novo no próximo ciclo.
 
 ### 7.5 Variáveis de ambiente adicionadas
 
 | Variável | Descrição | Default |
 |---|---|---|
-| `REDIS_URL` | Connection string TCP (`rediss://`) da Upstash, usada pelo BullMQ | — (obrigatória) |
-| `UPSTASH_REDIS_REST_URL` | Endpoint REST da Upstash | — (obrigatória) |
+| `UPSTASH_REDIS_REST_URL` | Endpoint REST da Upstash — usado pela fila, cache e rate limit | — (obrigatória) |
 | `UPSTASH_REDIS_REST_TOKEN` | Token da REST API da Upstash | — (obrigatória) |
+| `QUEUE_POLL_INTERVAL_MS` | Intervalo entre polls quando a lista da fila está vazia | 250 |
 | `INGEST_RATE_LIMIT_MAX` | Máximo de requisições por janela no rate limit de ingestão | 100 |
 | `INGEST_RATE_LIMIT_WINDOW_SECONDS` | Duração da janela do rate limit (segundos) | 60 |
 | `METRICS_CACHE_TTL_SECONDS` | TTL do cache dos endpoints de métricas (segundos) | 30 |
+
+### 7.6 Migração da fila: de BullMQ/TCP para lista Redis via REST (polling)
+
+A fila de ingestão (RF-04/RF-05) foi reescrita para não depender mais de TCP. Em vez do BullMQ (que exige uma conexão persistente e stateful ao Redis), `telemetry.queue.ts` agora implementa uma fila simples sobre uma lista Redis, acessada só pela API REST:
+
+- **Produtor (`addBatch`)** — `LLEN` para checar o tamanho atual contra `QUEUE_MAX_SIZE` (não atômico com o push seguinte, mesma limitação aproximada que já existia na versão BullMQ), depois `RPUSH` do lote serializado.
+- **Consumidor** — como a REST não suporta pop bloqueante nem pub/sub, `QUEUE_CONCURRENCY` loops de polling rodam em paralelo, cada um fazendo `LPOP` e, se a lista estiver vazia, aguardando `QUEUE_POLL_INTERVAL_MS` antes de tentar de novo.
+- **Falhas** — sem retry automático (mesmo comportamento da versão BullMQ, que também não tinha `attempts` configurado): um lote que falha ao processar é apenas logado e contado em `failed`, sem ser reenfileirado.
+- **Encerramento gracioso (`waitForDrain`)** — para os loops de polling e aguarda o contador local `inFlight` zerar, até um timeout.
+
+Motivo da mudança: ver §7.1 — TCP/6379 se mostrou bloqueado numa rede de desenvolvimento real, o que tornaria a fila inutilizável nesse ambiente. O `bullmq` e o `ioredis` foram removidos das dependências do projeto.

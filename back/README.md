@@ -9,8 +9,9 @@ query API for the dashboard.
 - **Fastify 5** — HTTP layer, `text/plain` content-type parser for `navigator.sendBeacon`
 - **Zod 4** — strict batch/event validation (discriminated union per event type)
 - **Knex + PostgreSQL** — bulk inserts, migrations
-- **In-memory queue** — single-instance producer/consumer (see `src/queues/telemetry.queue.ts`
-  for how to swap in BullMQ/Redis for multi-instance deployments)
+- **Redis-list queue over the Upstash REST API** — polling producer/consumer, so
+  ingestion works across multiple instances without a persistent TCP connection
+  (see `src/queues/telemetry.queue.ts`)
 - **Vitest** — unit/integration tests
 
 ## Getting started
@@ -51,3 +52,8 @@ npm run dev
   separate app-registration flow.
 - The queue caps its pending size (`QUEUE_MAX_SIZE`) and responds `503` when full, rather
   than growing memory unboundedly under sustained burst traffic.
+- The queue is a Redis list (`RPUSH`/`LPOP`) accessed only over Upstash's REST API
+  (HTTPS/443), not a TCP connection (`rediss://`, port 6379) — some networks silently
+  block/reset outbound 6379 via deep packet inspection while HTTPS stays open. Since REST
+  has no blocking pop, `QUEUE_CONCURRENCY` poll loops consume the list, each polling every
+  `QUEUE_POLL_INTERVAL_MS` when it's empty.
