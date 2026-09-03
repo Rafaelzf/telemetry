@@ -1,4 +1,6 @@
 import cors from '@fastify/cors';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
 import { pathToFileURL } from 'node:url';
 import { corsOrigins, env } from './config/env.js';
@@ -21,6 +23,23 @@ export function buildServer() {
     origin: corsOrigins,
     methods: ['GET', 'POST', 'OPTIONS']
   });
+
+  fastify.register(swagger, {
+    openapi: {
+      openapi: '3.0.0',
+      info: {
+        title: 'Telemetry Backend API',
+        description: 'Ingestion and metrics API for the telemetry pipeline.',
+        version: '1.0.0'
+      },
+      tags: [
+        { name: 'ingest', description: 'Telemetry event ingestion' },
+        { name: 'metrics', description: 'Aggregated error and performance metrics' },
+        { name: 'health', description: 'Service health' }
+      ]
+    }
+  });
+  fastify.register(swaggerUi, { routePrefix: '/documentation' });
 
   // navigator.sendBeacon commonly posts its payload as text/plain; parse it as raw
   // text here so the ingest controller can JSON.parse it just like a normal body.
