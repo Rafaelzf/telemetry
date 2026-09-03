@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "name": "telemetry-monorepo",
+  "workspaces": [
+    "back",
+    "sdk",
+    "front"
+  ]
+}
