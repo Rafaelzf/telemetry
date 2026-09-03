@@ -8,6 +8,13 @@ const QUEUE_KEY = 'telemetry:queue:jobs';
 /** Bounds how long a single Redis round-trip may take before we treat it as unavailable, rather than hanging the request. */
 const REDIS_OP_TIMEOUT_MS = 3_000;
 
+/**
+ * How long a getStats() result is reused before re-querying Redis. Render's own health-check
+ * probe hits /health (and therefore getStats) roughly every 5s; without this, that alone adds
+ * ~17k LLEN calls/day against Upstash's 10k/day free-tier cap, on top of the poll loop's own usage.
+ */
+const STATS_CACHE_TTL_MS = 10_000;
+
 function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), REDIS_OP_TIMEOUT_MS))]);
 }
@@ -32,6 +39,7 @@ class TelemetryQueue {
   private processed = 0;
   private failed = 0;
   private dropped = 0;
+  private statsCache: { value: QueueStats; expiresAt: number } | null = null;
 
   constructor() {
     for (let i = 0; i < env.QUEUE_CONCURRENCY; i++) {
@@ -81,7 +89,18 @@ class TelemetryQueue {
     }
   }
 
-  async getStats() {
+  /** Cached per STATS_CACHE_TTL_MS — called on every /health request, which Render's own uptime probe hits every ~5s. */
+  async getStats(): Promise<QueueStats> {
+    if (this.statsCache && Date.now() < this.statsCache.expiresAt) {
+      return this.statsCache.value;
+    }
+
+    const stats = await this.fetchStats();
+    this.statsCache = { value: stats, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
+    return stats;
+  }
+
+  private async fetchStats() {
     const length = await withTimeout(restRedis.llen(QUEUE_KEY), null);
     if (length === null) {
       return { pendingBatches: null, inFlight: this.inFlight, processed: this.processed, failed: this.failed, dropped: this.dropped, redisReachable: false };
@@ -106,5 +125,7 @@ class TelemetryQueue {
     }
   }
 }
+
+type QueueStats = Awaited<ReturnType<TelemetryQueue['fetchStats']>>;
 
 export const queueProducer = new TelemetryQueue();
