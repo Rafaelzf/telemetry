@@ -5,7 +5,9 @@ const links = [
   { to: '/errors', label: 'Erros' },
   { to: '/http', label: 'HTTP / Fetch' },
   { to: '/performance', label: 'Performance' },
-  { to: '/behavior', label: 'Comportamento' }
+  { to: '/behavior', label: 'Comportamento' },
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/concepts', label: 'O que é Telemetria' }
 ];
 
 export function NavBar() {

@@ -5,6 +5,8 @@ import { ErrorsPage } from './pages/ErrorsPage';
 import { HttpPage } from './pages/HttpPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { BehaviorPage } from './pages/BehaviorPage';
+import { ConceptsPage } from './pages/ConceptsPage';
+import { DashboardPage } from './pages/DashboardPage';
 
 export default function App() {
   return (
@@ -17,6 +19,8 @@ export default function App() {
           <Route path="/http" element={<HttpPage />} />
           <Route path="/performance" element={<PerformancePage />} />
           <Route path="/behavior" element={<BehaviorPage />} />
+          <Route path="/concepts" element={<ConceptsPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
         </Routes>
       </main>
     </div>

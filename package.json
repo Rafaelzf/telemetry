@@ -5,5 +5,8 @@
     "back",
     "sdk",
     "front"
-  ]
+  ],
+  "scripts": {
+    "build:front": "npm run build --workspace=sdk && npm run build --workspace=front"
+  }
 }

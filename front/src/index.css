@@ -163,6 +163,77 @@ button:disabled {
   color: light-dark(#7a7b85, #8a8b95);
 }
 
+.glossary-list {
+  display: grid;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.glossary-entry {
+  border: 1px solid light-dark(#dcdce4, #2a2b33);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  background: light-dark(#ffffff, #1a1b22);
+}
+
+.glossary-entry dt {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 0.4rem;
+}
+
+.glossary-entry dd {
+  margin: 0 0 0.4rem;
+}
+
+.glossary-entry dd:last-child {
+  margin-bottom: 0;
+}
+
+.dashboard-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin: 1.25rem 0 1.75rem;
+}
+
+.dashboard-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85em;
+  color: light-dark(#55565f, #a2a3ad);
+}
+
+.dashboard-filters select {
+  font: inherit;
+  padding: 0.4em 0.6em;
+  border-radius: 6px;
+  border: 1px solid light-dark(#c8c8d4, #3a3b45);
+  background: light-dark(#ffffff, #1f2028);
+  color: inherit;
+}
+
+.metric-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.metric-tabs button {
+  padding: 0.3em 0.9em;
+  font-size: 0.9em;
+}
+
+.metric-tabs button.active {
+  border-color: light-dark(#3454d1, #7fa1ff);
+  background: light-dark(#e4e9ff, #232a4a);
+  color: light-dark(#3454d1, #93aeff);
+  font-weight: 600;
+}
+
 .crash-fallback {
   max-width: 480px;
   margin: 4rem auto;
